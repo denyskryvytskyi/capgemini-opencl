@@ -1,0 +1,58 @@
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userprefs
+*.ncb
+*.aps
+*.pch
+*.idb
+*.log
+*.tlog
+*.pdb
+*.ipch
+*.obj
+*.exe
+*.dll
+*.lib
+*.ilk
+*.manifest
+*.lastbuildstate
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+[Oo]ut/
+[Oo]utDir/
+x64/
+x86/
+$(ConfigurationName)/
+bin/
+obj/
+
+# Other IDEs
+.idea/
+*.code-workspace
+
+# Visual Studio Code
+.vscode/
+.history/
+
+# Backup files
+*.bak
+*.swp
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.DS_Store
+
+# User-specific files
+*.userprefs
+*.suo
+*.sln.docstates
+
+# Other
+*.cache
+*.dSYM/
