@@ -114,7 +114,7 @@
       <AdditionalDependencies>OpenCL.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /E /I "$(ProjectDir)kernels" "$(OutDir)kernels"</Command>
+      <Command>xcopy /E /I /Y "$(ProjectDir)kernels" "$(OutDir)kernels"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -137,7 +137,7 @@
       <AdditionalLibraryDirectories>C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib\x64</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /E /I "$(ProjectDir)kernels" "$(OutDir)kernels"</Command>
+      <Command>xcopy /E /I /Y "$(ProjectDir)kernels" "$(OutDir)kernels"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

@@ -4,9 +4,7 @@
 
 int main()
 {
-    if (task_1::run()) {
-        return 1;
-    }
+    task_1::run();
 
     return 0;
 }
