@@ -194,7 +194,7 @@ void clAdd(float* pVecA, float* pVecB, float* pVecRes)
     }
 
     // Step 4: Create and compile the kernel
-    const char* kernelSource = utils::loadKernelSource(KERNEL_PATH);
+    const char* kernelSource = utils::loadKernelSource(KERNEL_PATH).c_str();
     program = clCreateProgramWithSource(context, 1, &kernelSource, nullptr, &err);
     if (err != CL_SUCCESS) {
         std::cout << "Failed to create the program: " << err << std::endl;
@@ -212,7 +212,7 @@ void clAdd(float* pVecA, float* pVecB, float* pVecRes)
         exit(1);
     }
 
-    kernel = clCreateKernel(program, "vector_add", &err);
+    kernel = clCreateKernel(program, "add", &err);
     if (err != CL_SUCCESS) {
         std::cout << "Failed to create kernel:" << err << std::endl;
         cleanHost(pVecA, pVecB, pVecRes);

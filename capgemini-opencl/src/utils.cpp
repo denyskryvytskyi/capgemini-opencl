@@ -5,7 +5,7 @@
 #include <sstream>
 
 namespace utils {
-const char* loadKernelSource(const char* filename)
+std::string loadKernelSource(const char* filename)
 {
     std::ifstream file(filename);
     if (!file.is_open()) {
@@ -14,8 +14,8 @@ const char* loadKernelSource(const char* filename)
     }
 
     std::stringstream buffer;
-    buffer << file.rdbuf();      // Read file into buffer
-    return buffer.str().c_str(); // Convert buffer to string
+    buffer << file.rdbuf(); // Read file into buffer
+    return buffer.str();    // Convert buffer to string
 }
 
 } // namespace utils
