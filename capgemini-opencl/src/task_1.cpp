@@ -289,13 +289,27 @@ void cleanHost(float* pVecA, float* pVecB, float* pVecRes)
 
 void cleanDevice(cl_mem bufferA, cl_mem bufferB, cl_mem bufferRes, cl_context context, cl_command_queue queue, cl_program program, cl_kernel kernel)
 {
-    clReleaseMemObject(bufferA);
-    clReleaseMemObject(bufferB);
-    clReleaseMemObject(bufferRes);
-    clReleaseKernel(kernel);
-    clReleaseProgram(program);
-    clReleaseCommandQueue(queue);
-    clReleaseContext(context);
+    if (bufferA) {
+        clReleaseMemObject(bufferA);
+    }
+    if (bufferB) {
+        clReleaseMemObject(bufferB);
+    }
+    if (bufferRes) {
+        clReleaseMemObject(bufferRes);
+    }
+    if (kernel) {
+        clReleaseKernel(kernel);
+    }
+    if (program) {
+        clReleaseProgram(program);
+    }
+    if (queue) {
+        clReleaseCommandQueue(queue);
+    }
+    if (context) {
+        clReleaseContext(context);
+    }
 }
 
 } // namespace task_1
