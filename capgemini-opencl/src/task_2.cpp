@@ -52,8 +52,6 @@ void matMulCl(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes);
 void cleanHost(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes);
 void cleanDevice(cl_mem bufferA, cl_mem bufferB, cl_mem bufferB_T, cl_mem bufferRes, cl_context context, cl_command_queue queue, cl_program program, cl_kernel kernel);
 
-void profileKernelEvent(cl_event kernelEvent, const std::string& msg);
-
 void run()
 {
     float* pMatA = static_cast<float*>(_aligned_malloc(MAT_A_SIZE * sizeof(float), ALIGNMENT));
@@ -245,8 +243,8 @@ void matMulCl(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes)
 
     // Create and compile the program
     std::string kernelSource = utils::loadKernelSource(KERNEL_PATH);
-    const char* testStr = kernelSource.c_str();
-    program = clCreateProgramWithSource(context, 1, &testStr, nullptr, &err);
+    const char* kernelSourceCstr = kernelSource.c_str();
+    program = clCreateProgramWithSource(context, 1, &kernelSourceCstr, nullptr, &err);
     if (err != CL_SUCCESS) {
         std::cout << "Failed to create the program: " << err << std::endl;
         cleanHost(pMatA, pMatB, pMatB_T, pMatRes);
@@ -353,9 +351,9 @@ void matMulCl(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes)
     const auto duration = std::chrono::duration<double, std::milli>(endTimePoint - startTimePoint);
     std::cout << "Buffers allocation time: " << duration.count() << " ms.\n";
 
-    profileKernelEvent(kernelTransposeEvent, "Transpose kernel execution time: ");
-    profileKernelEvent(kernelEvent, "Kernel execution time: ");
-    profileKernelEvent(readEvent, "Device to host memory copy time: ");
+    utils::profileKernelEvent(kernelTransposeEvent, "Transpose kernel execution time: ");
+    utils::profileKernelEvent(kernelEvent, "Kernel execution time: ");
+    utils::profileKernelEvent(readEvent, "Device to host memory copy time: ");
 }
 
 void cleanHost(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes)
@@ -392,21 +390,6 @@ void cleanDevice(cl_mem bufferA, cl_mem bufferB, cl_mem bufferB_T, cl_mem buffer
     if (context) {
         clReleaseContext(context);
     }
-}
-
-void profileKernelEvent(cl_event kernelEvent, const std::string& msg)
-{
-    cl_ulong startTime, endTime;
-    cl_int errStart, errEnd;
-    errStart = clGetEventProfilingInfo(kernelEvent, CL_PROFILING_COMMAND_START, sizeof(startTime), &startTime, nullptr);
-    errEnd = clGetEventProfilingInfo(kernelEvent, CL_PROFILING_COMMAND_END, sizeof(endTime), &endTime, nullptr);
-
-    clReleaseEvent(kernelEvent);
-    if (errStart != CL_SUCCESS || errEnd != CL_SUCCESS) {
-        std::cout << "Error getting profiling info. Start error: " << errStart << ", End error: " << errEnd << std::endl;
-    }
-
-    std::cout << msg << (endTime - startTime) * 1e-6f << " ms" << std::endl;
 }
 
 } // namespace task_2

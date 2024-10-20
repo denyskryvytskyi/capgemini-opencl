@@ -18,4 +18,19 @@ std::string loadKernelSource(const char* filename)
     return buffer.str();    // Convert buffer to string
 }
 
+void profileKernelEvent(cl_event kernelEvent, const std::string& msg)
+{
+    cl_ulong startTime, endTime;
+    cl_int errStart, errEnd;
+    errStart = clGetEventProfilingInfo(kernelEvent, CL_PROFILING_COMMAND_START, sizeof(startTime), &startTime, nullptr);
+    errEnd = clGetEventProfilingInfo(kernelEvent, CL_PROFILING_COMMAND_END, sizeof(endTime), &endTime, nullptr);
+
+    clReleaseEvent(kernelEvent);
+    if (errStart != CL_SUCCESS || errEnd != CL_SUCCESS) {
+        std::cout << "Error getting profiling info. Start error: " << errStart << ", End error: " << errEnd << std::endl;
+    }
+
+    std::cout << msg << (endTime - startTime) * 1e-6f << " ms" << std::endl;
+}
+
 } // namespace utils

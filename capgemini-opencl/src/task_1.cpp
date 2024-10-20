@@ -3,8 +3,8 @@
  * NOTE:
  *  - Implemented and tested on Windows. Laptop: GPU: NVIDIA GTX 1050; CPU: Intel Core i7-7700HQ.
  *  - Vectorization (incorporating SIMD instructions to kernels) doesn't improve performance.
- *    Because CUDA is scalar architecture. Therefore, there is no performance benefit from using vector types.
- * RESULTS: (For vectors with the size = 100'000'000)
+ *    I think since we still have a huge global work size and memory bandwidth.
+ * RESULTS: (For vectors with the size = 100'000'050)
  *  - CPU addition: ~132 ms
  *  - GPU addition: ~12 ms (x11 faster)
  *  - Device to host memory copy: ~90 ms
@@ -17,9 +17,14 @@
 
 namespace task_1 {
 
-constexpr size_t VEC_SIZE = 100'000'000;                // Vector size
-constexpr size_t GLOBAL_WORK_SIZE = (VEC_SIZE + 3) / 4; // Amount of float4 vectors, handling amount that is not multiple of 4
-constexpr size_t LOCAL_WORK_SIZE = 64;                  // Amount of work-items per work-group
+constexpr size_t VEC_SIZE = 100'000'050; // Vector size
+constexpr size_t FLOAT_VEC_SIZE = 4;
+constexpr size_t VEC_REMAINDER = VEC_SIZE % FLOAT_VEC_SIZE; // Remainder after array size adjusting for processing multiple of 4 array size
+constexpr size_t VEC_SIZE_VEC = (VEC_SIZE - VEC_REMAINDER) / FLOAT_VEC_SIZE;
+constexpr size_t LOCAL_WORK_SIZE = 256;                                                // Amount of work-items per work-group
+constexpr size_t WORK_GROUPS = (VEC_SIZE_VEC + LOCAL_WORK_SIZE - 1) / LOCAL_WORK_SIZE; // Vector size
+constexpr size_t GLOBAL_WORK_SIZE = WORK_GROUPS * LOCAL_WORK_SIZE;                     // Amount of float4 vectors, handling amount that is not multiple of 4
+
 constexpr int32_t ALIGNMENT = 16;
 constexpr float VEC_A_OFFSET = 0.5f;
 constexpr float VEC_B_OFFSET = 1.3f;
@@ -155,21 +160,21 @@ void clAdd(float* pVecA, float* pVecB, float* pVecRes)
     }
 
     // Step 2: Create buffers
-    bufferA = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(cl_float4) * GLOBAL_WORK_SIZE, nullptr, &err);
+    bufferA = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(cl_float4) * VEC_SIZE_VEC, nullptr, &err);
     if (err != CL_SUCCESS) {
         std::cout << "Error creating buffer A: " << err << std::endl;
         cleanHost(pVecA, pVecB, pVecRes);
         cleanDevice(bufferA, bufferB, bufferRes, context, queue, program, kernel);
         exit(1);
     }
-    bufferB = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(cl_float4) * GLOBAL_WORK_SIZE, nullptr, &err);
+    bufferB = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(cl_float4) * VEC_SIZE_VEC, nullptr, &err);
     if (err != CL_SUCCESS) {
         std::cout << "Error creating buffer B: " << err << std::endl;
         cleanHost(pVecA, pVecB, pVecRes);
         cleanDevice(bufferA, bufferB, bufferRes, context, queue, program, kernel);
         exit(1);
     }
-    bufferRes = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(cl_float4) * GLOBAL_WORK_SIZE, nullptr, &err);
+    bufferRes = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(cl_float4) * VEC_SIZE_VEC, nullptr, &err);
     if (err != CL_SUCCESS) {
         std::cout << "Error creating result buffer: " << err << std::endl;
         cleanHost(pVecA, pVecB, pVecRes);
@@ -178,14 +183,14 @@ void clAdd(float* pVecA, float* pVecB, float* pVecRes)
     }
 
     // Step 3: Asynchronously write host data to device memory
-    err = clEnqueueWriteBuffer(queue, bufferA, CL_FALSE, 0, sizeof(cl_float4) * GLOBAL_WORK_SIZE, pVecA, 0, nullptr, nullptr);
+    err = clEnqueueWriteBuffer(queue, bufferA, CL_FALSE, 0, sizeof(cl_float4) * VEC_SIZE_VEC, pVecA, 0, nullptr, nullptr);
     if (err != CL_SUCCESS) {
         std::cout << "Error writing buffer A: " << err << std::endl;
         cleanHost(pVecA, pVecB, pVecRes);
         cleanDevice(bufferA, bufferB, bufferRes, context, queue, program, kernel);
         exit(1);
     }
-    err = clEnqueueWriteBuffer(queue, bufferB, CL_FALSE, 0, sizeof(cl_float4) * GLOBAL_WORK_SIZE, pVecB, 0, nullptr, nullptr);
+    err = clEnqueueWriteBuffer(queue, bufferB, CL_FALSE, 0, sizeof(cl_float4) * VEC_SIZE_VEC, pVecB, 0, nullptr, nullptr);
     if (err != CL_SUCCESS) {
         std::cout << "Error writing buffer B: " << err << std::endl;
         cleanHost(pVecA, pVecB, pVecRes);
@@ -193,9 +198,10 @@ void clAdd(float* pVecA, float* pVecB, float* pVecRes)
         exit(1);
     }
 
-    // Step 4: Create and compile the kernel
-    const char* kernelSource = utils::loadKernelSource(KERNEL_PATH).c_str();
-    program = clCreateProgramWithSource(context, 1, &kernelSource, nullptr, &err);
+    // Create and compile the kernel
+    const std::string kernelSource = utils::loadKernelSource(KERNEL_PATH);
+    const char* kernelSourceCstr = kernelSource.c_str();
+    program = clCreateProgramWithSource(context, 1, &kernelSourceCstr, nullptr, &err);
     if (err != CL_SUCCESS) {
         std::cout << "Failed to create the program: " << err << std::endl;
         cleanHost(pVecA, pVecB, pVecRes);
@@ -226,7 +232,7 @@ void clAdd(float* pVecA, float* pVecB, float* pVecRes)
     clSetKernelArg(kernel, 2, sizeof(cl_mem), &bufferRes);
     clSetKernelArg(kernel, 3, sizeof(cl_int), &VEC_SIZE);
 
-    // Step 6: Execute the kernel
+    // Execute the kernel
     cl_event kernelEvent; // Event for profiling kernel
 
     err = clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &GLOBAL_WORK_SIZE, &LOCAL_WORK_SIZE, 0, nullptr, &kernelEvent);
@@ -237,9 +243,9 @@ void clAdd(float* pVecA, float* pVecB, float* pVecRes)
         exit(1);
     }
 
-    // Step 7: Read the results back to the host
+    // Read the results back to the host
     cl_event readEvent; // Event for profiling read from buffer function
-    err = clEnqueueReadBuffer(queue, bufferRes, CL_TRUE, 0, sizeof(cl_float4) * GLOBAL_WORK_SIZE, pVecRes, 0, nullptr, &readEvent);
+    err = clEnqueueReadBuffer(queue, bufferRes, CL_TRUE, 0, sizeof(cl_float4) * VEC_SIZE_VEC, pVecRes, 0, nullptr, &readEvent);
     if (err != CL_SUCCESS) {
         std::cout << "Failed to read buffer: " << err << std::endl;
         cleanHost(pVecA, pVecB, pVecRes);
@@ -247,37 +253,24 @@ void clAdd(float* pVecA, float* pVecB, float* pVecRes)
         exit(1);
     }
 
-    // Step 8: Clean up
+    // Clean up
     cleanDevice(bufferA, bufferB, bufferRes, context, queue, program, kernel);
 
-    // Step 9: Output the results
+    // Remainder sum up
+    for (int i = VEC_SIZE - VEC_REMAINDER; i < VEC_SIZE; ++i) {
+        pVecRes[i] = pVecA[i] + pVecB[i];
+    }
+
+    // Output the results
     std::cout << "===== GPU Addition =====\n";
     if (PRINT_VEC) {
         std::cout << "Result: ";
         printVec(pVecRes);
     }
 
-    // Step 10: Profiling the kernel execution time
-    cl_ulong startTime, endTime;
-    cl_int errStart, errEnd;
-
-    errStart = clGetEventProfilingInfo(kernelEvent, CL_PROFILING_COMMAND_START, sizeof(startTime), &startTime, nullptr);
-    errEnd = clGetEventProfilingInfo(kernelEvent, CL_PROFILING_COMMAND_END, sizeof(endTime), &endTime, nullptr);
-    clReleaseEvent(kernelEvent);
-    if (errStart != CL_SUCCESS || errEnd != CL_SUCCESS) {
-        std::cout << "Error getting profiling info. Start error: " << errStart << ", End error: " << errEnd << std::endl;
-    }
-
-    cl_ulong rstartTime, rendTime;
-    errStart = clGetEventProfilingInfo(readEvent, CL_PROFILING_COMMAND_START, sizeof(rstartTime), &rstartTime, nullptr);
-    errEnd = clGetEventProfilingInfo(readEvent, CL_PROFILING_COMMAND_END, sizeof(rendTime), &rendTime, nullptr);
-    clReleaseEvent(readEvent);
-    if (errStart != CL_SUCCESS || errEnd != CL_SUCCESS) {
-        std::cout << "Error getting profiling info. Start error: " << errStart << ", End error: " << errEnd << std::endl;
-    }
-
-    std::cout << "Kernel execution time: " << (endTime - startTime) * 1e-6f << " ms" << std::endl;
-    std::cout << "Device to host memory copy time: " << (rendTime - rstartTime) * 1e-6f << " ms" << std::endl;
+    // Profiling the kernel execution time
+    utils::profileKernelEvent(kernelEvent, "Kernel execution time: ");
+    utils::profileKernelEvent(readEvent, "Device to host memory copy time: ");
 }
 
 void cleanHost(float* pVecA, float* pVecB, float* pVecRes)

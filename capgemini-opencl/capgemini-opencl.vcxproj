@@ -144,11 +144,13 @@
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\task_1.cpp" />
     <ClCompile Include="src\task_2.cpp" />
+    <ClCompile Include="src\task_3.cpp" />
     <ClCompile Include="src\utils.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\task_1.h" />
     <ClInclude Include="src\task_2.h" />
+    <ClInclude Include="src\task_3.h" />
     <ClInclude Include="src\utils.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
