@@ -6,9 +6,9 @@
 
 int main()
 {
-    /*task_1::run();
-    task_2::run();*/
-    task_3::run();
+    task_1::run();
+    // task_2::run();
+    // task_3::run();
 
     return 0;
 }

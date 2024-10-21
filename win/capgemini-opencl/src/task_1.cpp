@@ -4,6 +4,8 @@
  *  - Implemented and tested on Windows. Laptop: GPU: NVIDIA GTX 1050; CPU: Intel Core i7-7700HQ.
  *  - Vectorization (incorporating SIMD instructions to kernels) doesn't improve performance.
  *    I think since we still have a huge global work size and memory bandwidth.
+ *    Reducing the size of the vector by half also reduces execution time by half.
+ *    Or the GPU already performs automatic vectorization at the hardware level.
  * RESULTS: (For vectors with the size = 100'000'050)
  *  - CPU addition: ~132 ms
  *  - GPU addition: ~12 ms (x11 faster)

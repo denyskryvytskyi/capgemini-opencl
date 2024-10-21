@@ -70,6 +70,7 @@ void run()
     float* pMatB_T = static_cast<float*>(_aligned_malloc(MAT_B_SIZE * sizeof(float), ALIGNMENT));
     if (!pMatB) {
         _aligned_free(pMatA);
+        _aligned_free(pMatB);
         std::cerr << "Failed to allocate memory for matrix B." << std::endl;
         exit(1);
     }
@@ -78,6 +79,7 @@ void run()
     if (!pMatRes) {
         _aligned_free(pMatA);
         _aligned_free(pMatB);
+        _aligned_free(pMatB_T);
         std::cerr << "Failed to allocate memory for result matrix." << std::endl;
         exit(1);
     }

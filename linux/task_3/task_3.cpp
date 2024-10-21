@@ -1,33 +1,45 @@
 /**
- * TASK:
+ * TASK: Reduction Operations Using OpenCL
  * NOTE:
- *  - Implemented and tested on Windows. Laptop: GPU: NVIDIA GTX 1050; CPU: Intel Core i7-7700HQ.
- * RESULTS: ()
- *  - CPU reduction: ~125 ms
- *  - GPU reduction:
- *      - Default: ~5.95 ms (~x21 faster)
- *      - Vectorized: ~3.95 ms (~x31 faster)
- *  - Overhead:
- *      - GPU buffers allocation: ~0.0073 ms
- *      - Device to host memory copy: ~0.28 ms
- *      - Final computation on CPU:
- *          - Default: ~0.47 ms
- *          - Vectorized: ~0.99 ms
+ *  - Implemented and tested on Windows and Linux.
+ *      - Windows (laptop): GPU: NVIDIA GTX 1050; CPU: Intel Core i7-7700HQ.
+ *      - Linux (this machine): GPU: Nvidia Tesla m60; CPU: Intel Xeon CPU E5-2686.
+ * RESULTS: (Array size = 100'000'050)
+ *  - Windows:
+ *      - CPU reduction: ~125 ms
+ *      - GPU reduction:
+ *          - Default: ~5.95 ms (~x21 faster)
+ *          - Vectorized: ~3.95 ms (~x31 faster)
+ *      - Overhead:
+ *          - GPU buffers allocation: ~0.0073 ms
+ *          - Device to host memory copy: ~0.28 ms
+ *          - Final computation on CPU:
+ *              - Default: ~0.47 ms
+ *              - Vectorized: ~0.99 ms
+ *  - Linux:
+ *      - CPU reduction: ~340 ms
+ *      - GPU reduction:
+ *          - Vectorized: ~3.02 ms (~x31 faster)
+ *      - Overhead:
+ *          - GPU buffers allocation: ~0.011 ms
+ *          - Device to host memory copy: ~0.17 ms
+ *          - Final computation on CPU:
+ *              - Vectorized: ~1.35 ms
  **/
 
-#include "utils.h"
+#include "utils.h" // load and profile kernel functions
 
 #include <chrono>
 #include <iostream>
-
-namespace task_3 {
+#include <fstream>
+#include <sstream>
 
 constexpr int32_t ARR_SIZE = 100'000'050;
 constexpr int32_t ALIGNMENT = 16;
 constexpr bool PRINT_ARR = false;
 
 // OpenCL specific
-const char* const KERNEL_PATH = "kernels/task_3.cl";
+const char* const KERNEL_PATH = "task_3.cl";
 const char* const KERNEL_NAME = "reduce";
 const char* const PROGRAM_FLAGS = "-cl-mad-enable -cl-fast-relaxed-math -Werror";
 constexpr size_t VEC_SIZE = 4;                                                                      // Size of vector for vectorization
@@ -47,11 +59,11 @@ void reduceCl(float* pArr, float* pArrOut);
 void cleanHost(float* pArr, float* pArrOut);
 void cleanDevice(cl_mem buffer, cl_mem bufferOut, cl_context context, cl_command_queue queue, cl_program program, cl_kernel kernel);
 
-void run()
+int main()
 {
-    float* pArr = static_cast<float*>(_aligned_malloc(ARR_SIZE * sizeof(float), ALIGNMENT));
-    if (!pArr) {
-        std::cerr << "Failed to allocate memory for array." << std::endl;
+    float* pArr = nullptr;
+    if (posix_memalign(reinterpret_cast<void**>(&pArr), ALIGNMENT, ARR_SIZE * sizeof(float)) != 0) {
+        std::cout << "Failed to allocate memory for array." << std::endl;
         exit(1);
     }
 
@@ -65,10 +77,10 @@ void run()
     reduce(pArr);
 
     // Partial reduction output array after parallel execution on GPU
-    float* pArrOut = static_cast<float*>(_aligned_malloc(WORK_GROUPS_AMOUNT * sizeof(float) * 4, ALIGNMENT));
-    if (!pArrOut) {
-        std::cerr << "Memory allocation failed for array." << std::endl;
-        _aligned_free(pArr);
+    float* pArrOut = nullptr;
+    if (posix_memalign(reinterpret_cast<void**>(&pArrOut), ALIGNMENT, WORK_GROUPS_AMOUNT * VEC_SIZE * sizeof(float)) != 0) {
+        std::cout << "Memory allocation failed for array." << std::endl;
+        free(pArr);
         exit(1);
     }
 
@@ -77,6 +89,8 @@ void run()
     reduceCl(pArr, pArrOut);
 
     cleanHost(pArr, pArrOut);
+
+    return 0;
 }
 
 void initData(float* pArr)
@@ -186,7 +200,7 @@ void reduceCl(float* pArr, float* pArrOut)
     }
 
     // Create and compile the program
-    std::string kernelSource = utils::loadKernelSource(KERNEL_PATH);
+    std::string kernelSource = loadKernelSource(KERNEL_PATH);
     const char* testStr = kernelSource.c_str();
     program = clCreateProgramWithSource(context, 1, &testStr, nullptr, &err);
     if (err != CL_SUCCESS) {
@@ -206,7 +220,7 @@ void reduceCl(float* pArr, float* pArrOut)
             clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
             char* log = new char[log_size];
             clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
-            std::cerr << "Build Log:\n"
+            std::cout << "Build Log:\n"
                       << log << std::endl;
             delete[] log;
         }
@@ -285,8 +299,8 @@ void reduceCl(float* pArr, float* pArrOut)
     const auto duration = std::chrono::duration<double, std::milli>(endTimePoint - startTimePoint);
     std::cout << "Buffers allocation time: " << duration.count() << " ms.\n";
 
-    utils::profileKernelEvent(kernelEvent, "Kernel execution time: ");
-    utils::profileKernelEvent(readEvent, "Device to host memory copy time: ");
+    profileKernelEvent(kernelEvent, "Kernel execution time: ");
+    profileKernelEvent(readEvent, "Device to host memory copy time: ");
 
     const auto fduration = std::chrono::duration<double, std::milli>(fendTimePoint - fstartTimePoint);
     std::cout << "Final computation on CPU: " << fduration.count() << " ms.\n";
@@ -294,8 +308,8 @@ void reduceCl(float* pArr, float* pArrOut)
 
 void cleanHost(float* pArr, float* pArrOut)
 {
-    _aligned_free(pArr);
-    _aligned_free(pArrOut);
+    free(pArr);
+    free(pArrOut);
 }
 
 void cleanDevice(cl_mem buffer, cl_mem bufferOut, cl_context context, cl_command_queue queue, cl_program program, cl_kernel kernel)
@@ -319,5 +333,3 @@ void cleanDevice(cl_mem buffer, cl_mem bufferOut, cl_context context, cl_command
         clReleaseContext(context);
     }
 }
-
-} // namespace task_3

@@ -1,3 +1,5 @@
+#define WARP_SIZE 32
+
 // Last warp unrolling for OpenCL
 inline void warpReduce(volatile __local float4* sdata, int tid)
 {
@@ -15,8 +17,7 @@ __kernel void reduce(__global float4* pArr, __global float4* pArrOut, int arrSiz
     const unsigned int tid = get_local_id(0);             // work-item id in the work-group
     const unsigned int localSize = get_local_size(0);     // dimension of the work-group
     const unsigned int groupId = get_group_id(0);         // id of work-group
-    
-    
+
     // Calculate the global index for the input array
     const unsigned int idx = groupId * (localSize * 2) + tid;   // index of element to process
 
@@ -35,7 +36,7 @@ __kernel void reduce(__global float4* pArr, __global float4* pArrOut, int arrSiz
     barrier(CLK_LOCAL_MEM_FENCE);  // Synchronization across work-items in the same work-group
 
     // Tree-based sum up
-    for (unsigned int s = get_local_size(0) / 2; s > 32; s >>= 1) {
+    for (unsigned int s = get_local_size(0) / 2; s > WARP_SIZE; s >>= 1) {
         if (tid < s) {
             sdata[tid] += sdata[tid + s];
         }
@@ -43,7 +44,7 @@ __kernel void reduce(__global float4* pArr, __global float4* pArrOut, int arrSiz
     }
 
     // Warp unrolling for the final warp
-    if (tid < 32) {
+    if (tid < WARP_SIZE) {
         warpReduce(sdata, tid);
     }
 
