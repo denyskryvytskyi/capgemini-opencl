@@ -6,7 +6,7 @@ Tasks were implemented and tested on:
 ## Getting Started
 As both machines have NVIDIA GPU and installed CUDA toolkit, I've used OpenCL SDK from the CUDA toolkit.
 
-- Install [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) or OpenCL SDK separately.
+- Install [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) or [OpenCL SDK](https://github.com/KhronosGroup/OpenCL-Guide/) separately.
 - *[optional]* Install [Intel CPU Runtime for OpenCL](https://www.intel.com/content/www/us/en/developer/tools/opencl-cpu-runtime/overview.html) to enable OpenCL on Intel CPU.
 - Check OpenCL .lib and headers in the Linux makefile and Windows solution for proper linking.
 - Run programs using Make on Linux and Visual Studio 2022 on Windows.
