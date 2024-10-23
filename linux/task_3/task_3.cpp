@@ -247,9 +247,9 @@ void reduceCl(float* pArr, float* pArrOut, cl_device_id device)
         {
             // logs of build
             size_t log_size;
-            clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+            clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, nullptr, &log_size);
             char* log = new char[log_size];
-            clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
+            clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, log_size, log, nullptr);
             std::cout << "Build Log:\n"
                       << log << std::endl;
             delete[] log;

@@ -303,9 +303,9 @@ void matMulCl(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes, cl_dev
 
         // logs of build
         size_t logSize;
-        clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, NULL, &logSize);
+        clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, nullptr, &logSize);
         char* log = new char[logSize];
-        clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, logSize, log, NULL);
+        clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, logSize, log, nullptr);
         std::cerr << "Build Log:\n" << log << std::endl;
         delete[] log;
         
