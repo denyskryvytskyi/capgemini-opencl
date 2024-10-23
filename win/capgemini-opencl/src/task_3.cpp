@@ -3,22 +3,30 @@
  * NOTE:
  *  - Implemented and tested on Windows. Laptop: GPU: NVIDIA GTX 1050; CPU: Intel Core i7-7700HQ.
  * RESULTS: (Array size = 100'000'050)
- *  - CPU reduction: ~125 ms
- *  - GPU reduction:
+ *  - CPU loop reduction: ~125 ms
+ *  - GPU device (NVIDIA GTX) kernel:
  *      - Default: ~5.95 ms (~x21 faster)
  *      - Vectorized: ~3.95 ms (~x31 faster)
- *  - Overhead:
- *      - GPU buffers allocation: ~0.0073 ms
- *      - Device to host memory copy: ~0.28 ms
- *      - Final computation on CPU:
- *          - Default: ~0.47 ms
- *          - Vectorized: ~0.99 ms
+ *      - Overhead:
+ *          - GPU buffers allocation: ~0.0073 ms
+ *          - Device to host memory copy: ~0.28 ms
+ *          - Final computation on CPU:
+ *              - Default: ~0.47 ms
+ *              - Vectorized: ~0.99 ms
+ *  - CPU device (Intel Core i7) kernel:
+ *      - Vectorized: ~24.4 ms (~x31 faster)
+ *      - Overhead:
+ *          - GPU buffers allocation: ~0.048 ms
+ *          - Device to host memory copy: ~0.19 ms
+ *          - Final computation on CPU:
+ *              - Vectorized: ~0.66 ms
  **/
 
 #include "utils.h"
 
 #include <chrono>
 #include <iostream>
+#include <vector>
 
 namespace task_3 {
 
@@ -42,7 +50,7 @@ void initData(float* pArr);
 void printArr(float* pArr);
 
 void reduce(float* pArr);
-void reduceCl(float* pArr, float* pArrOut);
+void reduceCl(float* pArr, float* pArrOut, cl_device_id device);
 
 void cleanHost(float* pArr, float* pArrOut);
 void cleanDevice(cl_mem buffer, cl_mem bufferOut, cl_context context, cl_command_queue queue, cl_program program, cl_kernel kernel);
@@ -64,6 +72,9 @@ void run()
 
     reduce(pArr);
 
+    // ===== OpenCL version =====
+    std::cout << "\n===== OpenCL version =====\n";
+
     // Partial reduction output array after parallel execution on GPU
     float* pArrOut = static_cast<float*>(_aligned_malloc(WORK_GROUPS_AMOUNT * sizeof(float) * 4, ALIGNMENT));
     if (!pArrOut) {
@@ -72,9 +83,44 @@ void run()
         exit(1);
     }
 
-    std::cout << "===== GPU Matrix Multiplication =====\n";
+    cl_uint numPlatforms;
+    clGetPlatformIDs(0, nullptr, &numPlatforms); // Get number of platforms
+    if (numPlatforms == 0) {
+        std::cerr << "No OpenCL platforms found." << std::endl;
+        exit(1);
+    }
 
-    reduceCl(pArr, pArrOut);
+    std::vector<cl_platform_id> platforms(numPlatforms);
+    clGetPlatformIDs(numPlatforms, platforms.data(), nullptr);
+    std::cout << "Supported platforms found: " << numPlatforms << std::endl;
+
+    cl_int err;
+    for (const auto& platform : platforms) {
+        char platformName[128];
+        clGetPlatformInfo(platform, CL_PLATFORM_NAME, 128, platformName, nullptr);
+        std::cout << "===== Platform: " << platformName << " ======\n";
+
+        // Skip slow integrated gpu
+        if (!strcmp(platformName, "Intel(R) OpenCL HD Graphics")) {
+            continue;
+        }
+
+        cl_device_id device = nullptr;
+        err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, nullptr);
+        if (err != CL_SUCCESS) {
+            std::cout << "Failed to get GPU device: " << err << std::endl;
+
+            err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_CPU, 1, &device, nullptr);
+            if (err != CL_SUCCESS) {
+                std::cout << "Failed to get CPU device: " << err << std::endl;
+                continue;
+            }
+        }
+
+        reduceCl(pArr, pArrOut, device);
+
+        std::cout << std::endl;
+    }
 
     cleanHost(pArr, pArrOut);
 }
@@ -113,7 +159,7 @@ void reduce(float* pArr)
     std::cout << "Execution time: " << duration.count() << " ms.\n";
 }
 
-void reduceCl(float* pArr, float* pArrOut)
+void reduceCl(float* pArr, float* pArrOut, cl_device_id device)
 {
     cl_mem buffer = nullptr;
     cl_mem bufferOut = nullptr;
@@ -125,23 +171,7 @@ void reduceCl(float* pArr, float* pArrOut)
 
     cl_int err; // Error code
 
-    // Set up OpenCL (platform -> device -> context -> queue)
-    cl_platform_id platform;
-    err = clGetPlatformIDs(1, &platform, nullptr);
-    if (err != CL_SUCCESS) {
-        std::cout << "Failed to get platform:" << err << std::endl;
-        cleanHost(pArr, pArrOut);
-        exit(1);
-    }
-
-    cl_device_id device;
-    err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, nullptr);
-    if (err != CL_SUCCESS) {
-        std::cout << "Failed to get device:" << err << std::endl;
-        cleanHost(pArr, pArrOut);
-        exit(1);
-    }
-
+    // Set up OpenCL (device -> context -> queue)
     context = clCreateContext(nullptr, 1, &device, nullptr, nullptr, &err);
     if (err != CL_SUCCESS) {
         std::cout << "Failed to create context:" << err << std::endl;
@@ -187,8 +217,8 @@ void reduceCl(float* pArr, float* pArrOut)
 
     // Create and compile the program
     std::string kernelSource = utils::loadKernelSource(KERNEL_PATH);
-    const char* testStr = kernelSource.c_str();
-    program = clCreateProgramWithSource(context, 1, &testStr, nullptr, &err);
+    const char* kernelSourceCstr = kernelSource.c_str();
+    program = clCreateProgramWithSource(context, 1, &kernelSourceCstr, nullptr, &err);
     if (err != CL_SUCCESS) {
         std::cout << "Failed to create the program: " << err << std::endl;
         cleanHost(pArr, pArrOut);
@@ -203,9 +233,9 @@ void reduceCl(float* pArr, float* pArrOut)
         {
             // logs of build
             size_t log_size;
-            clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+            clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, nullptr, &log_size);
             char* log = new char[log_size];
-            clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
+            clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, log_size, log, nullptr);
             std::cerr << "Build Log:\n"
                       << log << std::endl;
             delete[] log;

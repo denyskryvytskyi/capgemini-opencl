@@ -7,15 +7,20 @@
  *    Reducing the size of the vector by half also reduces execution time by half.
  *    Or the GPU already performs automatic vectorization at the hardware level.
  * RESULTS: (For vectors with the size = 100'000'050)
- *  - CPU addition: ~132 ms
- *  - GPU addition: ~12 ms (x11 faster)
- *  - Device to host memory copy: ~90 ms
+ *  - CPU loop addition: ~132 ms
+ *  - GPU device (NVIDIA CUDA) kernel: ~12 ms (x11 faster)
+ *      - Device to host memory copy: ~90 ms
+ *  - GPU device (Intel OpenCL HD Graphics) kernel: ~53.6 ms (x11 faster)
+ *      - Device to host memory copy: ~56.1 ms
+ *  - CPU device (Intel OpenCL) kernel: ~73.35 ms (x11 faster)
+ *      - Device to host memory copy: ~52 ms
  **/
 
 #include "utils.h"
 
 #include <chrono>
 #include <iostream>
+#include <vector>
 
 namespace task_1 {
 
@@ -37,7 +42,7 @@ const char* const KERNEL_PATH = "kernels/task_1.cl";
 void initData(float* pVecA, float* pVecB);
 void printVec(float* pVec);
 void add(float* pVecA, float* pVecB, float* pVecRes);
-void clAdd(float* pVecA, float* pVecB, float* pVecRes);
+void addCl(float* pVecA, float* pVecB, float* pVecRes, cl_device_id device);
 void cleanHost(float* pVecA, float* pVecB, float* pVecRes);
 void cleanDevice(cl_mem bufferA, cl_mem bufferB, cl_mem bufferRes, cl_context context, cl_command_queue queue, cl_program program, cl_kernel kernel);
 
@@ -75,7 +80,38 @@ void run()
 
     add(pVecA, pVecB, pVecRes);
 
-    clAdd(pVecA, pVecB, pVecRes);
+    // ===== OpenCL version =====
+    cl_uint numPlatforms;
+    clGetPlatformIDs(0, nullptr, &numPlatforms); // Get number of platforms
+    if (numPlatforms == 0) {
+        std::cerr << "No OpenCL platforms found." << std::endl;
+        exit(1);
+    }
+
+    std::vector<cl_platform_id> platforms(numPlatforms);
+    clGetPlatformIDs(numPlatforms, platforms.data(), nullptr);
+    std::cout << "Supported platforms found: " << numPlatforms << std::endl;
+
+    cl_int err;
+    for (const auto& platform : platforms) {
+        char platformName[128];
+        clGetPlatformInfo(platform, CL_PLATFORM_NAME, 128, platformName, nullptr);
+        std::cout << "===== Platform: " << platformName << " ======\n";
+
+        cl_device_id device = nullptr;
+        err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, nullptr);
+        if (err != CL_SUCCESS) {
+            std::cout << "Failed to get CPU device: " << err << std::endl;
+
+            err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_CPU, 1, &device, nullptr);
+            if (err != CL_SUCCESS) {
+                std::cout << "Failed to get GPU device: " << err << std::endl;
+                continue;
+            }
+        }
+
+        addCl(pVecA, pVecB, pVecRes, device);
+    }
 
     cleanHost(pVecA, pVecB, pVecRes);
 }
@@ -116,7 +152,7 @@ void add(float* pVecA, float* pVecB, float* pVecRes)
     std::cout << "Execution time: " << duration.count() << " ms.\n";
 }
 
-void clAdd(float* pVecA, float* pVecB, float* pVecRes)
+void addCl(float* pVecA, float* pVecB, float* pVecRes, cl_device_id device)
 {
     cl_mem bufferA = nullptr;
     cl_mem bufferB = nullptr;
@@ -128,23 +164,7 @@ void clAdd(float* pVecA, float* pVecB, float* pVecRes)
 
     cl_int err; // Error code
 
-    // Step 1: Set up OpenCL
-    cl_platform_id platform;
-    err = clGetPlatformIDs(1, &platform, nullptr);
-    if (err != CL_SUCCESS) {
-        std::cout << "Failed to get platform:" << err << std::endl;
-        cleanHost(pVecA, pVecB, pVecRes);
-        exit(1);
-    }
-
-    cl_device_id device;
-    err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, nullptr);
-    if (err != CL_SUCCESS) {
-        std::cout << "Failed to get device:" << err << std::endl;
-        cleanHost(pVecA, pVecB, pVecRes);
-        exit(1);
-    }
-
+    // Set up OpenCL
     context = clCreateContext(nullptr, 1, &device, nullptr, nullptr, &err);
     if (err != CL_SUCCESS) {
         std::cout << "Failed to create context:" << err << std::endl;
@@ -161,7 +181,7 @@ void clAdd(float* pVecA, float* pVecB, float* pVecRes)
         exit(1);
     }
 
-    // Step 2: Create buffers
+    // Create buffers
     bufferA = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(cl_float4) * VEC_SIZE_VEC, nullptr, &err);
     if (err != CL_SUCCESS) {
         std::cout << "Error creating buffer A: " << err << std::endl;
@@ -264,7 +284,6 @@ void clAdd(float* pVecA, float* pVecB, float* pVecRes)
     }
 
     // Output the results
-    std::cout << "===== GPU Addition =====\n";
     if (PRINT_VEC) {
         std::cout << "Result: ";
         printVec(pVecRes);

@@ -4,18 +4,28 @@
  *  - Implemented and tested on Windows and Linux.
  *      - Windows (laptop): GPU: NVIDIA GTX 1050; CPU: Intel Core i7-7700HQ.
  *      - Linux (this machine): GPU: Nvidia Tesla m60; CPU: Intel Xeon CPU E5-2686.
+ *  - OpenCL version based on tiled matrix with shared memory and transposed matrix B logic.
  * RESULTS: (for matrices A(1500; 2000); B(2000; 3000) and result matrix (1500;3000))
  *  - Windows:
- *      - CPU multiplication: ~5500 ms
- *      - GPU multiplication kernel (tiled matrix with shared memory): ~90 ms (~x61 faster)
- *      - GPU multiplication kernel (tiled matrix, shared memory and transposed matrix B): ~83.6 ms (~x65 faster)
- *      - Overhead:
- *          - GPU buffers allocation: ~0.02 ms
- *          - Matrix B transposition: ~1.9 ms
- *          - Device to host result matrix copy: ~4.1 ms
+ *      - CPU loop: ~5000 ms
+ *      - GPU device (NVIDIA GTX 1050) kernel : ~81 ms (~x61 faster)
+ *          - Overhead:
+ *              - GPU buffers allocation: ~0.02 ms
+ *              - Matrix B transposition: ~1.9 ms
+ *              - Device to host result matrix copy: ~4.1 ms
+ *      - GPU device (Intel HD Graphics) kernel : ~808 ms (~x6.2 faster)
+ *          - Overhead:
+ *              - GPU buffers allocation: ~0.33 ms
+ *              - Matrix B transposition: ~3.9 ms
+ *              - Device to host result matrix copy: ~2.3 ms
+ *      - CPU device (Intel Core i7-7700HQ) kernel : ~290 ms (~x17 faster)
+ *          - Overhead:
+ *              - GPU buffers allocation: ~0.05 ms
+ *              - Matrix B transposition: ~12.7 ms
+ *              - Device to host result matrix copy: ~1.95 ms
 *  - Linux:
- *      - CPU multiplication: ~97000 ms
- *      - GPU multiplication kernel (tiled matrix, shared memory and transposed matrix B): ~50.5 ms (~x1920 faster)
+ *      - CPU loop: ~31160 ms
+ *      - GPU device (NVIDIA) kernel: ~50.5 ms (~x1920 faster)
  *      - Overhead:
  *          - GPU buffers allocation: ~0.012 ms
  *          - Matrix B transposition: ~0.95 ms
@@ -28,6 +38,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <vector>
 
 constexpr int32_t MAT_DIM_N = 1500; // rows of the matrix A
 constexpr int32_t MAT_DIM_M = 2000; // cols of the matrix A and rows of the matrix B
@@ -57,7 +68,7 @@ void initData(float* pMatA, float* pMatB, float* pMatRes);
 void printMat(float* pMat, int32_t rows, int32_t cols);
 
 void matMul(float* pMatA, float* pMatB, float* pMatRes);
-void matMulCl(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes);
+void matMulCl(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes, cl_device_id device);
 
 void cleanHost(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes);
 void cleanDevice(cl_mem bufferA, cl_mem bufferB, cl_mem bufferB_T, cl_mem bufferRes, cl_context context, cl_command_queue queue, cl_program program, cl_kernel kernel);
@@ -107,9 +118,42 @@ int main()
 
     matMul(pMatA, pMatB, pMatRes);
 
-    std::cout << "===== GPU Matrix Multiplication =====\n";
+    // ===== OpenCL version =====
+    std::cout << "\n===== OpenCL version =====\n";
 
-    matMulCl(pMatA, pMatB, pMatB_T, pMatRes);
+    cl_uint numPlatforms;
+    clGetPlatformIDs(0, nullptr, &numPlatforms); // Get number of platforms
+    if (numPlatforms == 0) {
+        std::cerr << "No OpenCL platforms found." << std::endl;
+        exit(1);
+    }
+
+    std::vector<cl_platform_id> platforms(numPlatforms);
+    clGetPlatformIDs(numPlatforms, platforms.data(), nullptr);
+    std::cout << "Supported platforms found: " << numPlatforms << std::endl;
+
+    cl_int err;
+    for (const auto& platform : platforms) {
+        char platformName[128];
+        clGetPlatformInfo(platform, CL_PLATFORM_NAME, 128, platformName, nullptr);
+        std::cout << "===== Platform: " << platformName << " ======\n";
+
+        cl_device_id device = nullptr;
+        err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, nullptr);
+        if (err != CL_SUCCESS) {
+            std::cout << "Failed to get GPU device: " << err << std::endl;
+
+            err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_CPU, 1, &device, nullptr);
+            if (err != CL_SUCCESS) {
+                std::cout << "Failed to get CPU device: " << err << std::endl;
+                continue;
+            }
+        }
+
+        matMulCl(pMatA, pMatB, pMatB_T, pMatRes, device);
+
+        std::cout << std::endl;
+    }
 
     cleanHost(pMatA, pMatB, pMatB_T, pMatRes);
 
@@ -124,6 +168,8 @@ void initData(float* pMatA, float* pMatB, float* pMatRes)
     for (int i = 0; i < MAT_B_SIZE; ++i) {
         pMatB[i] = static_cast<float>(i) + MAT_B_OFFSET;
     }
+
+    memset(pMatRes, 0, MAT_RES_SIZE * sizeof(float));
 }
 
 void printMat(float* pMat, int32_t rows, int32_t cols)
@@ -161,7 +207,7 @@ void matMul(float* pMatA, float* pMatB, float* pMatRes)
     std::cout << "Execution time: " << duration.count() << " ms.\n";
 }
 
-void matMulCl(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes)
+void matMulCl(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes, cl_device_id device)
 {
     cl_mem bufferA = nullptr;
     cl_mem bufferB = nullptr;
@@ -175,23 +221,7 @@ void matMulCl(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes)
 
     cl_int err; // Error code
 
-    // Set up OpenCL (platform -> device -> context -> queue)
-    cl_platform_id platform;
-    err = clGetPlatformIDs(1, &platform, nullptr);
-    if (err != CL_SUCCESS) {
-        std::cout << "Failed to get platform:" << err << std::endl;
-        cleanHost(pMatA, pMatB, pMatB_T, pMatRes);
-        exit(1);
-    }
-
-    cl_device_id device;
-    err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, nullptr);
-    if (err != CL_SUCCESS) {
-        std::cout << "Failed to get device:" << err << std::endl;
-        cleanHost(pMatA, pMatB, pMatB_T, pMatRes);
-        exit(1);
-    }
-
+    // Set up OpenCL (context -> queue)
     context = clCreateContext(nullptr, 1, &device, nullptr, nullptr, &err);
     if (err != CL_SUCCESS) {
         std::cout << "Failed to create context:" << err << std::endl;

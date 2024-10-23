@@ -7,7 +7,7 @@ CXX = g++
 CXXFLAGS = -I/usr/local/cuda/include -I../utils -L/usr/local/cuda/lib64 -DCL_HPP_TARGET_OPENCL_VERSION=300
 
 # Linker flags
-LDFLAGS = -lOpenCL
+LDFLAGS = -lOpenCL -O3
 
 # Source files
 SRCS = task_3.cpp

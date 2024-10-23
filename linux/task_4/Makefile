@@ -1,4 +1,4 @@
-# Makefile for compiling task_1.cpp with OpenCL support
+# Makefile for compiling task_4.cpp with OpenCL support
 
 # Compiler
 CXX = g++
@@ -10,10 +10,10 @@ CXXFLAGS = -I/usr/local/cuda/include -I../utils -L/usr/local/cuda/lib64 -DCL_HPP
 LDFLAGS = -lOpenCL -O3
 
 # Source files
-SRCS = task_1.cpp
+SRCS = task_4.cpp
 
 # Output binary
-TARGET = task_1
+TARGET = task_4
 
 # Default target
 all: $(TARGET)
