@@ -3,6 +3,12 @@ Tasks were implemented and tested on:
  - Windows laptop: GPU: NVIDIA GTX 1050; CPU: Intel Core i7-7700HQ.
  - Linux AWS instance machine: GPU: Nvidia Tesla m60; CPU: Intel Xeon CPU E5-2686.
 
+Tasks list:
+- vectors addition;
+- matrix multiplication using tiles, GPU shared memory, and matrix transposition;
+- reduction (sum);
+- sorting using a custom implementation of the Bitonic sort algorithm.
+
 ## Getting Started
 As both machines have NVIDIA GPU and installed CUDA toolkit, I've used OpenCL SDK from the CUDA toolkit.
 
