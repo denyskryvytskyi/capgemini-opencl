@@ -142,17 +142,17 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\main.cpp" />
-    <ClCompile Include="src\task_4.cpp" />
-    <ClCompile Include="src\task_1.cpp" />
-    <ClCompile Include="src\task_2.cpp" />
-    <ClCompile Include="src\task_3.cpp" />
+    <ClCompile Include="src\sort.cpp" />
+    <ClCompile Include="src\addVector.cpp" />
+    <ClCompile Include="src\matMul.cpp" />
+    <ClCompile Include="src\reduction.cpp" />
     <ClCompile Include="src\utils.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\task_1.h" />
-    <ClInclude Include="src\task_2.h" />
-    <ClInclude Include="src\task_3.h" />
-    <ClInclude Include="src\task_4.h" />
+    <ClInclude Include="src\addVector.h" />
+    <ClInclude Include="src\matMul.h" />
+    <ClInclude Include="src\reduction.h" />
+    <ClInclude Include="src\sort.h" />
     <ClInclude Include="src\utils.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

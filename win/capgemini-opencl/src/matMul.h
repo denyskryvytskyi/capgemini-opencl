@@ -1,5 +1,5 @@
 #pragma once
 
-namespace task_4 {
+namespace matMul {
 void run();
 }

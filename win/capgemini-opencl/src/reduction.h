@@ -1,5 +1,5 @@
 #pragma once
 
-namespace task_2 {
+namespace reduction {
 void run();
 }

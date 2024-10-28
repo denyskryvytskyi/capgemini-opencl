@@ -1,5 +1,3 @@
-# Makefile for compiling task_1.cpp with OpenCL support
-
 # Compiler
 CXX = g++
 
@@ -10,10 +8,10 @@ CXXFLAGS = -I/usr/local/cuda/include -I../utils -L/usr/local/cuda/lib64 -DCL_HPP
 LDFLAGS = -lOpenCL -O3
 
 # Source files
-SRCS = task_1.cpp
+SRCS = addVector.cpp
 
 # Output binary
-TARGET = task_1
+TARGET = addVector
 
 # Default target
 all: $(TARGET)

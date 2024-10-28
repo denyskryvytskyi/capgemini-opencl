@@ -1,5 +1,3 @@
-# Makefile for compiling task_2.cpp with OpenCL support
-
 # Compiler
 CXX = g++
 
@@ -10,10 +8,10 @@ CXXFLAGS = -I/usr/local/cuda/include -I../utils -L/usr/local/cuda/lib64 -DCL_HPP
 LDFLAGS = -lOpenCL -O3
 
 # Source files
-SRCS = task_2.cpp
+SRCS = sort.cpp
 
 # Output binary
-TARGET = task_2
+TARGET = sort
 
 # Default target
 all: $(TARGET)

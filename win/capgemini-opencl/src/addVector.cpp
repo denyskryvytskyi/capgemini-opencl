@@ -22,7 +22,7 @@
 #include <iostream>
 #include <vector>
 
-namespace task_1 {
+namespace addVector {
 
 constexpr size_t VEC_SIZE = 100'000'050; // Vector size
 constexpr size_t FLOAT_VEC_SIZE = 4;
@@ -36,7 +36,7 @@ constexpr int32_t ALIGNMENT = 16;
 constexpr float VEC_A_OFFSET = 0.5f;
 constexpr float VEC_B_OFFSET = 1.3f;
 constexpr bool PRINT_VEC = false;
-const char* const KERNEL_PATH = "kernels/task_1.cl";
+const char* const KERNEL_PATH = "kernels/addVector.cl";
 
 // Helpers
 void initData(float* pVecA, float* pVecB);
@@ -101,11 +101,11 @@ void run()
         cl_device_id device = nullptr;
         err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, nullptr);
         if (err != CL_SUCCESS) {
-            std::cout << "Failed to get CPU device: " << err << std::endl;
+            std::cout << "Failed to get GPU device: " << err << std::endl;
 
             err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_CPU, 1, &device, nullptr);
             if (err != CL_SUCCESS) {
-                std::cout << "Failed to get GPU device: " << err << std::endl;
+                std::cout << "Failed to get CPU device: " << err << std::endl;
                 continue;
             }
         }
@@ -326,4 +326,4 @@ void cleanDevice(cl_mem bufferA, cl_mem bufferB, cl_mem bufferRes, cl_context co
     }
 }
 
-} // namespace task_1
+} // namespace addVector

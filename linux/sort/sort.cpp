@@ -1,17 +1,27 @@
 /**
  * TASK: Sorting with OpenCL
  * NOTE:
- *  - Implemented and tested on Windows. Laptop: GPU: NVIDIA GTX 1050; CPU: Intel Core i7-7700HQ.
+ *  - Bitonic sort algorithm is impelemented.
+ *  - Implemented and tested on Windows and Linux.
+ *      - Windows (laptop): GPU: NVIDIA GTX 1050; CPU: Intel Core i7-7700HQ.
+ *      - Linux (this machine): GPU: Nvidia Tesla m60; CPU: Intel Xeon CPU E5-2686.
  * RESULTS: (Bitonic Sort for array size = 134'217'728)
- *  - CPU loop sort: ~4000 ms
- *  - GPU device (NVIDIA) kernel: ~1560 ms
- *      - Overhead:
- *          - Buffers allocation: ~134 ms
- *          - Device to host memory copy: ~121 ms
- *  - CPU device (Intel Core i7) kernel: ~5000 ms
- *      - Overhead:
- *          - Buffers allocation: ~0.3 ms
- *          - Device to host memory copy: ~66 ms
+ * - Windows:
+ *      - CPU loop sort: ~4000 ms
+ *      - GPU device (NVIDIA) kernel: ~1560 ms
+ *          - Overhead:
+ *              - Buffers allocation: ~134 ms
+ *              - Device to host memory copy: ~121 ms
+ *      - CPU device (Intel Core i7) kernel: ~5000 ms
+ *          - Overhead:
+ *              - Buffers allocation: ~0.3 ms
+ *              - Device to host memory copy: ~66 ms
+ * - Linux:
+ *      - CPU loop sort: ~6175 ms
+ *      - GPU device (NVIDIA) kernel: ~859 ms
+ *          - Overhead:
+ *              - Buffers allocation: ~77.9 ms
+ *              - Device to host memory copy: ~50 ms
  **/
 
 #include "utils.h"
@@ -21,8 +31,6 @@
 #include <iostream>
 #include <random>
 
-namespace task_4 {
-
 constexpr int32_t ARR_SIZE = 1 << 27;
 constexpr int32_t ARR_MIN_VAL = -100;
 constexpr int32_t ARR_MAX_VAL = 100;
@@ -30,7 +38,7 @@ constexpr int32_t ALIGNMENT = 16;
 constexpr bool PRINT_ARR = false;
 
 // OpenCL specific
-const char* const KERNEL_PATH = "kernels/task_4.cl";
+const char* const KERNEL_PATH = "sort.cl";
 const char* const KERNEL_NAME = "sort";
 const char* const PROGRAM_FLAGS = "-cl-mad-enable -cl-fast-relaxed-math -Werror";
 constexpr size_t LOCAL_WORK_SIZE = 128;
@@ -45,11 +53,11 @@ void sortCl(int32_t* pArr, cl_device_id device);
 
 void cleanDevice(cl_mem buffer, cl_context context, cl_command_queue queue, cl_program program, cl_kernel kernel);
 
-void run()
+int main()
 {
-    int32_t* pArr = static_cast<int32_t*>(_aligned_malloc(ARR_SIZE * sizeof(int32_t), ALIGNMENT));
-    if (!pArr) {
-        std::cerr << "Memory allocation failed for array." << std::endl;
+    int32_t* pArr = nullptr;
+    if (posix_memalign(reinterpret_cast<void**>(&pArr), ALIGNMENT, ARR_SIZE * sizeof(int32_t)) != 0) {
+        std::cout << "Memory allocation failed for array." << std::endl;
         exit(1);
     }
 
@@ -68,7 +76,7 @@ void run()
     cl_uint numPlatforms;
     clGetPlatformIDs(0, nullptr, &numPlatforms); // Get number of platforms
     if (numPlatforms == 0) {
-        std::cerr << "No OpenCL platforms found." << std::endl;
+        std::cout << "No OpenCL platforms found." << std::endl;
         exit(1);
     }
 
@@ -99,7 +107,9 @@ void run()
         std::cout << std::endl;
     }
 
-    _aligned_free(pArr);
+    free(pArr);
+
+    return 0;
 }
 
 void initData(int32_t* pArr)
@@ -127,22 +137,22 @@ void sort(int32_t* pArr)
     std::cout << "===== CPU Sorting =====\n";
 
     // Allocate copy just to enable the same array be sorted using opencl based function
-    int32_t* pArrCopy = static_cast<int32_t*>(_aligned_malloc(ARR_SIZE * sizeof(int32_t), ALIGNMENT));
+    int32_t* pArrCopy = nullptr;
 
-    if (!pArrCopy) {
-        std::cerr << "Memory allocation failed for array copy." << std::endl;
-        exit(1);
-    }
+    // if (posix_memalign(reinterpret_cast<void**>(&pArrCopy), ALIGNMENT, ARR_SIZE * sizeof(int32_t)) != 0) {
+    //     std::cout << "Memory allocation failed for array copy." << std::endl;
+    //     exit(1);
+    // }
 
-    memcpy(pArrCopy, pArr, ARR_SIZE * sizeof(int32_t));
+    // memcpy(pArrCopy, pArr, ARR_SIZE * sizeof(int32_t));
 
     const auto startTimePoint = std::chrono::high_resolution_clock::now();
-    std::sort(pArrCopy, pArrCopy + ARR_SIZE);
+    std::sort(pArr, pArr + ARR_SIZE);
     const auto endTimePoint = std::chrono::high_resolution_clock::now();
 
     if (PRINT_ARR) {
         std::cout << "Sorted array: ";
-        printArr(pArrCopy);
+        printArr(pArr);
     }
 
     const auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTimePoint - startTimePoint);
@@ -164,7 +174,7 @@ void sortCl(int32_t* pArr, cl_device_id device)
     context = clCreateContext(nullptr, 1, &device, nullptr, nullptr, &err);
     if (err != CL_SUCCESS) {
         std::cout << "Failed to create context:" << err << std::endl;
-        _aligned_free(pArr);
+        free(pArr);
         exit(1);
     }
 
@@ -172,7 +182,7 @@ void sortCl(int32_t* pArr, cl_device_id device)
     queue = clCreateCommandQueueWithProperties(context, device, properties, &err);
     if (err != CL_SUCCESS) {
         std::cout << "Error creating command queue: " << err << std::endl;
-        _aligned_free(pArr);
+        free(pArr);
         cleanDevice(buffer, context, queue, program, kernel);
         exit(1);
     }
@@ -182,7 +192,7 @@ void sortCl(int32_t* pArr, cl_device_id device)
     buffer = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(int32_t) * ARR_SIZE, nullptr, &err);
     if (err != CL_SUCCESS) {
         std::cout << "Error creating buffer: " << err << std::endl;
-        _aligned_free(pArr);
+        free(pArr);
         cleanDevice(buffer, context, queue, program, kernel);
         exit(1);
     }
@@ -191,19 +201,19 @@ void sortCl(int32_t* pArr, cl_device_id device)
     err = clEnqueueWriteBuffer(queue, buffer, CL_FALSE, 0, sizeof(int32_t) * ARR_SIZE, pArr, 0, nullptr, nullptr);
     if (err != CL_SUCCESS) {
         std::cout << "Error writing buffer: " << err << std::endl;
-        _aligned_free(pArr);
+        free(pArr);
         cleanDevice(buffer, context, queue, program, kernel);
         exit(1);
     }
     const auto endTimePoint = std::chrono::high_resolution_clock::now();
 
     // Create and compile the program
-    std::string kernelSource = utils::loadKernelSource(KERNEL_PATH);
+    std::string kernelSource = loadKernelSource(KERNEL_PATH);
     const char* kernelSourceCstr = kernelSource.c_str();
     program = clCreateProgramWithSource(context, 1, &kernelSourceCstr, nullptr, &err);
     if (err != CL_SUCCESS) {
         std::cout << "Failed to create the program: " << err << std::endl;
-        _aligned_free(pArr);
+        free(pArr);
         cleanDevice(buffer, context, queue, program, kernel);
         exit(1);
     }
@@ -217,11 +227,11 @@ void sortCl(int32_t* pArr, cl_device_id device)
         clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, nullptr, &log_size);
         char* log = new char[log_size];
         clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, log_size, log, nullptr);
-        std::cerr << "Build Log:\n"
+        std::cout << "Build Log:\n"
                   << log << std::endl;
         delete[] log;
 
-        _aligned_free(pArr);
+        free(pArr);
         cleanDevice(buffer, context, queue, program, kernel);
         exit(1);
     }
@@ -230,7 +240,7 @@ void sortCl(int32_t* pArr, cl_device_id device)
     kernel = clCreateKernel(program, KERNEL_NAME, &err);
     if (err != CL_SUCCESS) {
         std::cout << "Failed to create kernel:" << err << std::endl;
-        _aligned_free(pArr);
+        free(pArr);
         cleanDevice(buffer, context, queue, program, kernel);
         exit(1);
     }
@@ -251,7 +261,7 @@ void sortCl(int32_t* pArr, cl_device_id device)
             err = clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &GLOBAL_WORK_SIZE, &LOCAL_WORK_SIZE, 0, nullptr, &kernelEvent);
             if (err != CL_SUCCESS) {
                 std::cout << "Failed to enqueu kernel:" << err << std::endl;
-                _aligned_free(pArr);
+                free(pArr);
                 cleanDevice(buffer, context, queue, program, kernel);
                 exit(1);
             }
@@ -263,7 +273,7 @@ void sortCl(int32_t* pArr, cl_device_id device)
     err = clEnqueueReadBuffer(queue, buffer, CL_TRUE, 0, sizeof(int32_t) * ARR_SIZE, pArr, 0, nullptr, &readEvent);
     if (err != CL_SUCCESS) {
         std::cout << "Failed to read buffer: " << err << std::endl;
-        _aligned_free(pArr);
+        free(pArr);
         cleanDevice(buffer, context, queue, program, kernel);
         exit(1);
     }
@@ -292,7 +302,7 @@ void sortCl(int32_t* pArr, cl_device_id device)
     }
 
     std::cout << "Kernel execution time:  " << totalExecutionTime << " ms.\n";
-    utils::profileKernelEvent(readEvent, "Device to host memory copy time: ");
+    profileKernelEvent(readEvent, "Device to host memory copy time: ");
 }
 
 void cleanDevice(cl_mem buffer, cl_context context, cl_command_queue queue, cl_program program, cl_kernel kernel)
@@ -313,5 +323,3 @@ void cleanDevice(cl_mem buffer, cl_context context, cl_command_queue queue, cl_p
         clReleaseContext(context);
     }
 }
-
-} // namespace task_4

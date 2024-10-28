@@ -1,34 +1,44 @@
 /**
  * TASK: Matrix Multiplication Using OpenCL
  * NOTE:
- *  - Implemented and tested on Windows. Laptop: GPU: NVIDIA GTX 1050; CPU: Intel Core i7-7700HQ.
+ *  - Implemented and tested on Windows and Linux.
+ *      - Windows (laptop): GPU: NVIDIA GTX 1050; CPU: Intel Core i7-7700HQ.
+ *      - Linux (this machine): GPU: Nvidia Tesla m60; CPU: Intel Xeon CPU E5-2686.
  *  - OpenCL version based on tiled matrix with shared memory and transposed matrix B logic.
  * RESULTS: (for matrices A(1500; 2000); B(2000; 3000) and result matrix (1500;3000))
- *  - CPU loop: ~5000 ms
- *  - GPU device (NVIDIA CUDA) kernel : ~81 ms (~x61 faster)
+ *  - Windows:
+ *      - CPU loop: ~5000 ms
+ *      - GPU device (NVIDIA GTX 1050) kernel : ~81 ms (~x61 faster)
+ *          - Overhead:
+ *              - GPU buffers allocation: ~0.02 ms
+ *              - Matrix B transposition: ~1.9 ms
+ *              - Device to host result matrix copy: ~4.1 ms
+ *      - GPU device (Intel HD Graphics) kernel : ~808 ms (~x6.2 faster)
+ *          - Overhead:
+ *              - GPU buffers allocation: ~0.33 ms
+ *              - Matrix B transposition: ~3.9 ms
+ *              - Device to host result matrix copy: ~2.3 ms
+ *      - CPU device (Intel Core i7-7700HQ) kernel : ~290 ms (~x17 faster)
+ *          - Overhead:
+ *              - GPU buffers allocation: ~0.05 ms
+ *              - Matrix B transposition: ~12.7 ms
+ *              - Device to host result matrix copy: ~1.95 ms
+*  - Linux:
+ *      - CPU loop: ~31160 ms
+ *      - GPU device (NVIDIA) kernel: ~50.5 ms (~x1920 faster)
  *      - Overhead:
- *          - GPU buffers allocation: ~0.02 ms
- *          - Matrix B transposition: ~1.9 ms
- *          - Device to host result matrix copy: ~4.1 ms
- *  - GPU device (Intel HD Graphics) kernel : ~808 ms (~x6.2 faster)
- *      - Overhead:
- *          - GPU buffers allocation: ~0.33 ms
- *          - Matrix B transposition: ~3.9 ms
- *          - Device to host result matrix copy: ~2.3 ms
- *  - CPU device (Intel Core i7-7700HQ) kernel : ~290 ms (~x17 faster)
- *      - Overhead:
- *          - GPU buffers allocation: ~0.05 ms
- *          - Matrix B transposition: ~12.7 ms
- *          - Device to host result matrix copy: ~1.95 ms
+ *          - GPU buffers allocation: ~0.012 ms
+ *          - Matrix B transposition: ~0.95 ms
+ *          - Device to host result matrix copy: ~2.02 ms
  **/
 
-#include "utils.h"
+#include "utils.h" // load and profile kernel functions
 
 #include <chrono>
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <vector>
-
-namespace task_2 {
 
 constexpr int32_t MAT_DIM_N = 1500; // rows of the matrix A
 constexpr int32_t MAT_DIM_M = 2000; // cols of the matrix A and rows of the matrix B
@@ -42,7 +52,7 @@ constexpr float MAT_B_OFFSET = 1.3f;
 constexpr bool PRINT_MAT = false;
 
 // OpenCL specific
-const char* const KERNEL_PATH = "kernels/task_2.cl";
+const char* const KERNEL_PATH = "matMul.cl";
 const char* const KERNEL_NAME = "matMulTiled";
 const char* const TRANPOSE_KERNEL_NAME = "transpose";
 const char* const PROGRAM_FLAGS = "-cl-mad-enable -cl-fast-relaxed-math";
@@ -63,34 +73,35 @@ void matMulCl(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes, cl_dev
 void cleanHost(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes);
 void cleanDevice(cl_mem bufferA, cl_mem bufferB, cl_mem bufferB_T, cl_mem bufferRes, cl_context context, cl_command_queue queue, cl_program program, cl_kernel kernel);
 
-void run()
+int main()
 {
-    float* pMatA = static_cast<float*>(_aligned_malloc(MAT_A_SIZE * sizeof(float), ALIGNMENT));
-    if (!pMatA) {
+    float* pMatA = nullptr;
+    float* pMatB = nullptr;
+    float* pMatB_T = nullptr;
+    float* pMatRes = nullptr;
+
+    if (posix_memalign(reinterpret_cast<void**>(&pMatA), ALIGNMENT, MAT_A_SIZE * sizeof(float)) != 0) {
         std::cerr << "Failed to allocate memory for matrix A." << std::endl;
         exit(1);
     }
 
-    float* pMatB = static_cast<float*>(_aligned_malloc(MAT_B_SIZE * sizeof(float), ALIGNMENT));
-    if (!pMatB) {
-        _aligned_free(pMatA);
+    if (posix_memalign(reinterpret_cast<void**>(&pMatB), ALIGNMENT, MAT_B_SIZE * sizeof(float)) != 0) {
+        free(pMatA);
         std::cerr << "Failed to allocate memory for matrix B." << std::endl;
         exit(1);
     }
 
-    float* pMatB_T = static_cast<float*>(_aligned_malloc(MAT_B_SIZE * sizeof(float), ALIGNMENT));
-    if (!pMatB) {
-        _aligned_free(pMatA);
-        _aligned_free(pMatB);
-        std::cerr << "Failed to allocate memory for matrix B." << std::endl;
+    if (posix_memalign(reinterpret_cast<void**>(&pMatB_T), ALIGNMENT, MAT_B_SIZE * sizeof(float)) != 0) {
+        free(pMatA);
+        free(pMatB);
+        std::cerr << "Failed to allocate memory for transpose matrix B ." << std::endl;
         exit(1);
     }
 
-    float* pMatRes = static_cast<float*>(_aligned_malloc(MAT_RES_SIZE * sizeof(float), ALIGNMENT));
-    if (!pMatRes) {
-        _aligned_free(pMatA);
-        _aligned_free(pMatB);
-        _aligned_free(pMatB_T);
+    if (posix_memalign(reinterpret_cast<void**>(&pMatRes), ALIGNMENT, MAT_RES_SIZE * sizeof(float)) != 0) {
+        free(pMatA);
+        free(pMatB);
+        free(pMatB_T);
         std::cerr << "Failed to allocate memory for result matrix." << std::endl;
         exit(1);
     }
@@ -145,6 +156,8 @@ void run()
     }
 
     cleanHost(pMatA, pMatB, pMatB_T, pMatRes);
+
+    return 0;
 }
 
 void initData(float* pMatA, float* pMatB, float* pMatRes)
@@ -155,6 +168,7 @@ void initData(float* pMatA, float* pMatB, float* pMatRes)
     for (int i = 0; i < MAT_B_SIZE; ++i) {
         pMatB[i] = static_cast<float>(i) + MAT_B_OFFSET;
     }
+
     memset(pMatRes, 0, MAT_RES_SIZE * sizeof(float));
 }
 
@@ -207,7 +221,7 @@ void matMulCl(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes, cl_dev
 
     cl_int err; // Error code
 
-    // Set up OpenCL (platform -> device -> context -> queue)
+    // Set up OpenCL (context -> queue)
     context = clCreateContext(nullptr, 1, &device, nullptr, nullptr, &err);
     if (err != CL_SUCCESS) {
         std::cout << "Failed to create context:" << err << std::endl;
@@ -273,7 +287,7 @@ void matMulCl(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes, cl_dev
     }
 
     // Create and compile the program
-    std::string kernelSource = utils::loadKernelSource(KERNEL_PATH);
+    std::string kernelSource = loadKernelSource(KERNEL_PATH);
     const char* kernelSourceCstr = kernelSource.c_str();
     program = clCreateProgramWithSource(context, 1, &kernelSourceCstr, nullptr, &err);
     if (err != CL_SUCCESS) {
@@ -287,16 +301,14 @@ void matMulCl(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes, cl_dev
     if (err != CL_SUCCESS) {
         std::cout << "Failed to build the program: " << err << std::endl;
 
-        {
-            // logs of build
-            size_t log_size;
-            clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, nullptr, &log_size);
-            char* log = new char[log_size];
-            clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, log_size, log, nullptr);
-            std::cerr << "Build Log:\n"
-                      << log << std::endl;
-            delete[] log;
-        }
+        // logs of build
+        size_t logSize;
+        clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, nullptr, &logSize);
+        char* log = new char[logSize];
+        clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, logSize, log, nullptr);
+        std::cerr << "Build Log:\n" << log << std::endl;
+        delete[] log;
+        
         cleanHost(pMatA, pMatB, pMatB_T, pMatRes);
         cleanDevice(bufferA, bufferB, bufferB_T, bufferRes, context, queue, program, kernel);
         exit(1);
@@ -382,17 +394,17 @@ void matMulCl(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes, cl_dev
     const auto duration = std::chrono::duration<double, std::milli>(endTimePoint - startTimePoint);
     std::cout << "Buffers allocation time: " << duration.count() << " ms.\n";
 
-    utils::profileKernelEvent(kernelTransposeEvent, "Transpose kernel execution time: ");
-    utils::profileKernelEvent(kernelEvent, "Kernel execution time: ");
-    utils::profileKernelEvent(readEvent, "Device to host memory copy time: ");
+    profileKernelEvent(kernelTransposeEvent, "Transpose kernel execution time: ");
+    profileKernelEvent(kernelEvent, "Kernel execution time: ");
+    profileKernelEvent(readEvent, "Device to host memory copy time: ");
 }
 
 void cleanHost(float* pMatA, float* pMatB, float* pMatB_T, float* pMatRes)
 {
-    _aligned_free(pMatA);
-    _aligned_free(pMatB);
-    _aligned_free(pMatB_T);
-    _aligned_free(pMatRes);
+    free(pMatA);
+    free(pMatB);
+    free(pMatB_T);
+    free(pMatRes);
 }
 
 void cleanDevice(cl_mem bufferA, cl_mem bufferB, cl_mem bufferB_T, cl_mem bufferRes, cl_context context, cl_command_queue queue, cl_program program, cl_kernel kernel)
@@ -422,5 +434,3 @@ void cleanDevice(cl_mem bufferA, cl_mem bufferB, cl_mem bufferB_T, cl_mem buffer
         clReleaseContext(context);
     }
 }
-
-} // namespace task_2

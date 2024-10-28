@@ -1,16 +1,31 @@
 #include <iostream>
 
-#include "task_1.h"
-#include "task_2.h"
-#include "task_3.h"
-#include "task_4.h"
+#include "addVector.h"
+#include "matMul.h"
+#include "reduction.h"
+#include "sort.h"
 
 int main()
 {
-    // task_1::run();
-    //  task_2::run();
-    //  task_3::run();
-    task_4::run();
+    // vector addition test
+    if (true) {
+        addVector::run();
+    }
+
+    // matrix multiplication test
+    if (true) {
+        matMul::run();
+    }
+
+    // reduction (sum) test
+    if (true) {
+        reduction::run();
+    }
+
+    // sorting test
+    if (true) {
+        sort::run();
+    }
 
     return 0;
 }

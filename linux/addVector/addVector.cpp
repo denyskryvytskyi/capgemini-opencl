@@ -43,7 +43,7 @@ constexpr int32_t ALIGNMENT = 16;
 constexpr float VEC_A_OFFSET = 0.5f;
 constexpr float VEC_B_OFFSET = 1.3f;
 constexpr bool PRINT_VEC = false;
-const char* const KERNEL_PATH = "task_1.cl";
+const char* const KERNEL_PATH = "addVector.cl";
 
 // Helpers
 void initData(float* pVecA, float* pVecB);

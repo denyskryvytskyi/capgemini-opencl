@@ -1,5 +1,5 @@
 #pragma once
 
-namespace task_1 {
+namespace sort {
 void run();
 }
